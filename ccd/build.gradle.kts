@@ -19,3 +19,9 @@ dependencies {
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
 }
 
+//Run this task to generate JavaLexer sources
+tasks.generateGrammarSource {
+    arguments = arguments + listOf("-package", "org.accula.ccd.lexer")
+    outputDirectory = file("src/main/java/org/accula/ccd/lexer")
+}
+
