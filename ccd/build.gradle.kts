@@ -25,3 +25,10 @@ tasks.generateGrammarSource {
     outputDirectory = file("src/main/java/org/accula/ccd/lexer/gen")
 }
 
+tasks.bootJar {
+    enabled = false
+}
+
+tasks.jar {
+    enabled = true
+}
