@@ -1,6 +1,6 @@
 package org.accula.ccd;
 
-import org.accula.ccd.lexer.JavaLexer;
+import org.accula.ccd.lexer.gen.JavaLexer;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.Token;
 
