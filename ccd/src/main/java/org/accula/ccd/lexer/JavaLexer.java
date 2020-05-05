@@ -1,5 +1,5 @@
-// Generated from C:/Users/Johny/IdeaProjects/accula/ccd/src/main/java/antlr\JavaLexer.g4 by ANTLR 4.8
-package antlr.gen;
+// Generated from JavaLexer.g4 by ANTLR 4.8
+package org.accula.ccd.lexer;
 import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.Token;
