@@ -11,6 +11,7 @@ import org.accula.api.code.git.GitDiffEntry.Renaming;
 import org.accula.api.code.git.GitFile;
 import org.accula.api.code.git.Identifiable;
 import org.accula.api.code.git.Snippet;
+import org.accula.api.db.model.Commit;
 import org.accula.api.db.model.GithubRepo;
 import org.accula.api.db.model.Snapshot;
 import org.accula.api.util.Lambda;
@@ -87,12 +88,28 @@ public final class GitCodeLoader implements CodeLoader {
                 .flatMapMany(repo -> loadDiff(repo, base, head, filter, 1));
     }
 
+    @Override
+    public Flux<Commit> loadCommits(final GithubRepo repo, final String sinceRef, final String untilRef) {
+        return withCommonGitRepo(repo)
+                .flatMap(gitRepo -> Mono.fromFuture(gitRepo.log(sinceRef, untilRef)))
+                .flatMapMany(Flux::fromIterable)
+                .map(commit -> Commit.builder()
+                        .sha(commit.getSha())
+                        .authorName(commit.getAuthorName())
+                        .authorEmail(commit.getAuthorEmail())
+                        .date(commit.getDate())
+                        .build());
+    }
+
     /// We name each common repo git folder like that: <owner-login>_<repo-name>
-    private Mono<Repo> withCommonGitRepo(final Snapshot snapshot) {
-        final var snapshotRepo = snapshot.getRepo();
-        final var repoGitDirectory = Path.of(snapshotRepo.getOwner().getLogin() + "_" + snapshotRepo.getName());
-        final var repoUrl = repoGitUrl(snapshotRepo);
+    private Mono<Repo> withCommonGitRepo(final GithubRepo repo) {
+        final var repoGitDirectory = Path.of(repo.getOwner().getLogin() + "_" + repo.getName());
+        final var repoUrl = repoGitUrl(repo);
         return withGitRepo(repoGitDirectory, repoUrl);
+    }
+
+    private Mono<Repo> withCommonGitRepo(final Snapshot snapshot) {
+        return withCommonGitRepo(snapshot.getRepo());
     }
 
     private Mono<Repo> withProjectGitRepo(final GithubRepo projectRepo) {

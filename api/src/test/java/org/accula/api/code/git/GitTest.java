@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -171,6 +172,28 @@ final class GitTest {
                     .parallel()
                     .forEach(it -> assertDoesNotThrow(() ->
                             assertNotNull(repo.remoteUpdate(REMOTE_NAME))));
+        });
+    }
+
+    @Test
+    void testLog() {
+        assertDoesNotThrow(() -> {
+            final var repo = git.clone(REPO_URL, REPO_DIR).get();
+            assertNotNull(repo);
+
+            IntStream.range(0, Runtime.getRuntime().availableProcessors() * 5)
+                    .parallel()
+                    .forEach(it ->
+                            assertDoesNotThrow(() -> {
+                                final var commits = repo.log(BASE_REF, HEAD_REF).get();
+                                assertEquals(1, commits.size());
+                                assertEquals(GitCommit.builder()
+                                        .sha("69f552851f0f6093816c3064b6e00438e0ff3b19")
+                                        .authorName("Anton Lamtev")
+                                        .authorEmail("antonlamtev@gmail.com")
+                                        .date(Instant.parse("2020-05-03T13:27:09Z"))
+                                        .build(), commits.get(0));
+                            }));
         });
     }
 }

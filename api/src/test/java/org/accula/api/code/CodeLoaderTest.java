@@ -200,4 +200,16 @@ class CodeLoaderTest {
                 .count();
         assertEquals(5, possibleRenameCount);
     }
+
+    @Test
+    void testLoadCommits() {
+        var headOwner = new GithubUser(1L, "vaddya", "owner", "ava", false);
+        var headRepo = new GithubRepo(1L, "2019-highload-dht", "descr", headOwner);
+        var sinceRef = "b5e4943c3690a54c325f7a95db20893f75b0b41b";
+        var untilRef = "50bcdd747aa571e0776bed65fe474784cd73377b";
+        StepVerifier.create(codeLoader.loadCommits(headRepo, sinceRef, untilRef).collectList())
+                .expectNextMatches(commits -> commits.size() == 9)
+                .expectComplete()
+                .verify();
+    }
 }

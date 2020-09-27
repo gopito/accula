@@ -1,5 +1,6 @@
 package org.accula.api.code;
 
+import org.accula.api.db.model.Commit;
 import org.accula.api.db.model.GithubRepo;
 import org.accula.api.db.model.Snapshot;
 import reactor.core.publisher.Flux;
@@ -55,4 +56,9 @@ public interface CodeLoader {
      * @see #loadDiff(Snapshot, Snapshot, FileFilter)
      */
     Flux<DiffEntry<Snapshot>> loadRemoteDiff(GithubRepo projectRepo, Snapshot base, Snapshot head, FileFilter filter);
+
+    /**
+     * Loads commits of specified repo in a given ref interval (sinceRef, untilRef]
+     */
+    Flux<Commit> loadCommits(GithubRepo repo, String sinceRef, String untilRef);
 }

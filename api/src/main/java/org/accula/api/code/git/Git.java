@@ -2,6 +2,8 @@ package org.accula.api.code.git;
 
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.Value;
+import org.accula.api.util.Strings;
 import org.accula.api.util.Sync;
 import org.jetbrains.annotations.Nullable;
 
@@ -11,9 +13,12 @@ import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -23,13 +28,14 @@ import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toSet;
 
 /**
@@ -116,7 +122,7 @@ public final class Git {
                 return usingStdoutLines(process, lines -> lines
                         .map(Git::parseDiffEntry)
                         .filter(Objects::nonNull)
-                        .collect(Collectors.toList()))
+                        .collect(toList()))
                         .orElse(Collections.emptyList());
             });
         }
@@ -139,7 +145,7 @@ public final class Git {
                         throw wrap(e);
                     }
 
-                    final var lineList = lines.collect(Collectors.toList());
+                    final var lineList = lines.collect(toList());
                     return filesContent(lineList, objectIds);
                 }).orElse(Collections.emptyMap());
             });
@@ -152,7 +158,7 @@ public final class Git {
                 return usingStdoutLines(process, lines -> lines
                         .map(Git::parseShowEntry)
                         .filter(Objects::nonNull)
-                        .collect(Collectors.toList()))
+                        .collect(toList()))
                         .orElse(Collections.emptyList());
             });
         }
@@ -164,7 +170,7 @@ public final class Git {
                 return usingStdoutLines(process, lines -> lines
                         .map(Git::parseLsEntry)
                         .filter(Objects::nonNull)
-                        .collect(Collectors.toList()))
+                        .collect(toList()))
                         .orElse(Collections.emptyList());
             });
         }
@@ -204,6 +210,14 @@ public final class Git {
                 } catch (InterruptedException e) {
                     throw wrap(e);
                 }
+            });
+        }
+
+        public CompletableFuture<List<GitCommit>> log(final String fromRef, final String toRef) {
+            return readingAsync(() -> {
+                final var log = git("log", "--date=rfc", "%s..%s".formatted(fromRef, toRef));
+                return usingStdoutLines(log, lines -> commits(lines.collect(toList())))
+                        .orElse(Collections.emptyList());
             });
         }
 
@@ -271,6 +285,33 @@ public final class Git {
             filesContent.put(objectIds.get(fileToDiscoverIdx - 1), currentFile.toString());
         }
         return filesContent;
+    }
+
+    /// Lines format:
+    /// commit commit_sha
+    /// Author: author_name <author@email>
+    //  Date:   date_in_rfc_format
+    private static List<GitCommit> commits(final List<String> lines) {
+        final List<GitCommit> commits = new ArrayList<>();
+        final var commitBuilder = GitCommit.builder();
+        new CommitEntryParseIterator(lines).forEachRemaining(entry -> {
+            switch (entry.state) {
+                case SHA -> commitBuilder.sha(entry.line);
+                case AUTHOR -> {
+                    final var nameAndEmail = entry.line.split(" <", 2);
+                    if (nameAndEmail.length != 2) {
+                        throw new IllegalStateException("'Author:' line was of not supported format: %s".formatted(entry.line));
+                    }
+                    commitBuilder.authorName(nameAndEmail[0]);
+                    commitBuilder.authorEmail(nameAndEmail[1].substring(0, nameAndEmail[1].length() - 1));
+                }
+                case DATE -> {
+                    commitBuilder.date(Instant.from(DateTimeFormatter.RFC_1123_DATE_TIME.parse(entry.line)));
+                    commits.add(commitBuilder.build());
+                }
+            }
+        });
+        return commits;
     }
 
     /// Line format:
@@ -386,5 +427,82 @@ public final class Git {
 
     private static GitException wrap(final Throwable e) {
         return new GitException(e);
+    }
+
+    private static class CommitEntryParseIterator implements Iterator<CommitEntryParseIterator.Entry> {
+        final List<String> lines;
+        final int lineCount;
+        State state = State.SHA;
+        int i = -1;
+
+        CommitEntryParseIterator(final List<String> lines) {
+            this.lines = lines;
+            this.lineCount = lines.size();
+        }
+
+        @Override
+        public boolean hasNext() {
+            return i < lineCount;
+        }
+
+        @Override
+        public Entry next() {
+            while (true) {
+                if (i == lineCount - 1) {
+                    i = lineCount;
+                    return Entry.TERMINAL;
+                }
+                final var line = lines.get(++i);
+                final var next = switch (state) {
+                    case SHA -> {
+                        final var sha = Strings.suffixAfterPrefix(line, "commit ");
+                        if (sha == null) {
+                            yield null;
+                        }
+                        state = State.AUTHOR;
+                        yield Entry.of(sha, State.SHA);
+                    }
+                    case AUTHOR -> {
+                        final var author = Strings.suffixAfterPrefix(line, "Author: ");
+                        Objects.requireNonNull(author);
+                        state = State.DATE;
+                        yield Entry.of(author, State.AUTHOR);
+                    }
+                    case DATE -> {
+                        final var date = Strings.suffixAfterPrefix(line, "Date:   ");
+                        Objects.requireNonNull(date);
+                        state = State.SHA;
+                        yield Entry.of(date, State.DATE);
+                    }
+                };
+                if (next != null) {
+                    return next;
+                }
+            }
+        }
+
+        @Override
+        public void forEachRemaining(final Consumer<? super Entry> action) {
+            while (hasNext()) {
+                final var next = next();
+                if (next != Entry.TERMINAL) {
+                    action.accept(next);
+                }
+            }
+        }
+
+        enum State {
+            SHA,
+            AUTHOR,
+            DATE,
+        }
+
+        @Value(staticConstructor = "of")
+        static class Entry {
+            static final Entry TERMINAL = Entry.of(null, null);
+
+            String line;
+            State state;
+        }
     }
 }
