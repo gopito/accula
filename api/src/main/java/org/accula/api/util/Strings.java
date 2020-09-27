@@ -17,15 +17,12 @@ public final class Strings {
             return null;
         }
 
-        for (int i = 0; i <= prefixLength; ++i) {
-            if (i == prefixLength) {
-                return string.substring(i);
-            }
+        for (int i = 0; i < prefixLength; ++i) {
             if (prefix.charAt(i) != string.charAt(i)) {
                 return null;
             }
         }
 
-        return null;
+        return string.substring(prefixLength);
     }
 }
