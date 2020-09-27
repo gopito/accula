@@ -287,10 +287,21 @@ public final class Git {
         return filesContent;
     }
 
-    /// Lines format:
-    /// commit commit_sha
-    /// Author: author_name <author@email>
-    //  Date:   date_in_rfc_format
+    /**
+     * Forms a {@link GitCommit} list by extracting the components from the given lines
+     * <p>
+     * Lines format:
+     * <pre>{@code
+     * commit commit_sha
+     * Author: author_name <author@email>
+     * Date:   date_in_rfc_format
+     * }</pre>
+     * <p>
+     *
+     * @implNote We expect that commit date is in RFC-1123 format, so we
+     * can easily convert it to {@link Instant} using built-in {@link DateTimeFormatter}
+     * @see Git.Repo#log(String, String)
+     */
     private static List<GitCommit> commits(final List<String> lines) {
         final List<GitCommit> commits = new ArrayList<>();
         final var commitBuilder = GitCommit.builder();

@@ -130,6 +130,7 @@ public final class GithubClientImpl implements GithubClient {
     private <T> Mono<T> withAccessToken(final Function<String, Mono<T>> transform) {
         return accessTokenProvider
                 .accessToken()
+                .switchIfEmpty(GithubClientException.wrap(new IllegalAccessException("No access token provided")))
                 .flatMap(transform);
     }
 }

@@ -2,6 +2,7 @@ package org.accula.api.handlers.util;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.accula.api.code.CodeLoader;
 import org.accula.api.converter.GithubApiToModelConverter;
 import org.accula.api.db.model.GithubRepo;
 import org.accula.api.db.model.GithubUser;
@@ -34,6 +35,7 @@ public final class ProjectUpdater {
     private final GithubRepoRepo githubRepoRepo;
     private final SnapshotRepo snapshotRepo;
     private final PullRepo pullRepo;
+    private final CodeLoader codeLoader;
 
     public Mono<Integer> update(final Long projectId, final GithubApiPull[] githubApiPulls) { // NOPMD
         if (githubApiPulls.length == 0) {
@@ -77,6 +79,9 @@ public final class ProjectUpdater {
     }
 
     public Mono<Pull> update(final Long projectId, final GithubApiPull githubApiPull) {
+        final var commitsMono = pullRepo.findById(githubApiPull.getId())
+                .flatMapMany(pull -> codeLoader.loadCommits(pull.getHead().getRepo(), pull.getHead().getSha(), githubApiPull.getHead().getSha()))
+                .collectList();
         return Mono
                 .defer(() -> {
                     if (!githubApiPull.isValid()) {
@@ -91,7 +96,9 @@ public final class ProjectUpdater {
                     final var pull = processGithubApiPull(projectId, githubApiPull, users, repos, heads, bases);
                     final var allCommitSnapshots = combine(heads, bases);
 
-                    return githubUserRepo.upsert(users)
+                    return commitsMono
+//                            .flatMapMany(commitRepo::insert)
+                            .thenMany(githubUserRepo.upsert(users))
                             .thenMany(githubRepoRepo.upsert(repos))
                             .thenMany(snapshotRepo.insert(allCommitSnapshots))
                             .then(pullRepo.upsert(pull))

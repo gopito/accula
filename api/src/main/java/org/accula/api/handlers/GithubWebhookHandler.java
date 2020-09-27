@@ -12,6 +12,8 @@ import org.springframework.web.reactive.function.server.ServerRequest;
 import org.springframework.web.reactive.function.server.ServerResponse;
 import reactor.core.publisher.Mono;
 
+import java.util.Objects;
+
 /**
  * @author Anton Lamtev
  * @author Vadim Dyachkov
@@ -22,16 +24,26 @@ import reactor.core.publisher.Mono;
 public final class GithubWebhookHandler {
     private static final String GITHUB_EVENT = "X-GitHub-Event";
     private static final String GITHUB_EVENT_PING = "ping";
+    private static final String GITHUB_EVENT_PULL = "pull_request";
 
     private final ProjectRepo projectRepo;
     private final ProjectUpdater projectUpdater;
     private final CloneDetectionService cloneDetectionService;
 
     public Mono<ServerResponse> webhook(final ServerRequest request) {
-        if (GITHUB_EVENT_PING.equals(request.headers().firstHeader(GITHUB_EVENT))) {
-            return ServerResponse.ok().build();
-        }
-        // TODO: validate signature in X-Hub-Signature 
+        // TODO: validate signature in X-Hub-Signature
+        return switch (Objects.requireNonNull(request.headers().firstHeader(GITHUB_EVENT))) {
+            case GITHUB_EVENT_PING -> ok();
+            case GITHUB_EVENT_PULL -> processPull(request);
+            default -> ServerResponse.badRequest().build();
+        };
+    }
+
+    private static Mono<ServerResponse> ok() {
+        return ServerResponse.ok().build();
+    }
+
+    private Mono<ServerResponse> processPull(final ServerRequest request) {
         return request
                 .bodyToMono(GithubApiHookPayload.class)
                 .onErrorResume(GithubWebhookHandler::ignoreNotSupportedAction)
@@ -40,10 +52,10 @@ public final class GithubWebhookHandler {
                     log.error("Error during payload processing: ", e);
                     return Mono.empty();
                 })
-                .flatMap(p -> ServerResponse.ok().build());
+                .flatMap(__ -> ok());
     }
 
-    public Mono<Void> processPayload(final GithubApiHookPayload payload) {
+    private Mono<Void> processPayload(final GithubApiHookPayload payload) {
         return switch (payload.getAction()) {
             case OPENED, SYNCHRONIZE -> updateProject(payload).transform(this::detectClones);
             case EDITED, CLOSED -> updateProject(payload).then();
